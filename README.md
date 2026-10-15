@@ -1,230 +1,62 @@
-# Automated Glaucoma Detection from Retinal Fundus Images — ML vs. DL
+# Glaucoma Detection from Retinal Images: Deep Learning vs Classical Machine Learning
 
-**Author:** Mayishat Altab
-
-A comparative machine learning and deep learning project for binary classification of retinal fundus images into glaucoma and normal categories. This project evaluates traditional machine learning classifiers and transfer-learning architectures, with additional Grad-CAM visualization and background-attention analysis.
+**Author:** Mayishat Altab (GitHub: [@mayishataltab](https://github.com/mayishataltab)
 
 ## Overview
 
-Glaucoma is an eye disease that can damage the optic nerve and cause vision loss. This project explores automated classification of retinal fundus images as a research application of machine learning and medical image analysis.
+This project classifies retinal fundus images as **glaucoma** or **normal**. It compares two transfer-learning models (EfficientNetB3 and DenseNet121) with two classical machine-learning models (SVM and XGBoost) trained on hand-crafted image features. It also uses Grad-CAM to check whether the deep models look at the retina or at the black image background.
 
-The notebook compares four approaches:
 
-- **EfficientNetB3** — transfer-learning-based convolutional neural network.
-- **DenseNet121** — transfer-learning-based convolutional neural network.
-- **Support Vector Machine (SVM)** — traditional classifier using handcrafted image features.
-- **XGBoost** — gradient-boosted decision tree classifier using handcrafted image features.
 
-In addition to classification, the notebook investigates model behavior using Grad-CAM heatmaps and a heuristic audit of attention falling on dark image backgrounds or borders.
-
-> **Research disclaimer:** This project is for educational and research purposes. It is not a clinically validated diagnostic system and must not be used as a substitute for professional medical assessment.
-
-## Key Features
-
-- Binary glaucoma-versus-normal image classification.
-- Stratified train, validation, and test splitting.
-- Image resizing and preprocessing.
-- Data augmentation for deep learning.
-- Transfer learning and fine-tuning with EfficientNetB3 and DenseNet121.
-- Handcrafted feature extraction using Histogram of Oriented Gradients (HOG) and Local Binary Patterns (LBP).
-- SVM and XGBoost model training and tuning.
-- Classification metrics and confusion-matrix visualization.
-- Grad-CAM heatmap generation for deep learning models.
-- Background-attention auditing to investigate potential shortcut learning.
-- Export of model checkpoints, training histories, evaluation reports, and visualizations.
+> This is a research and learning project. It is not a clinical tool and must not be used for medical diagnosis.
 
 ## Dataset
 
-The notebook is configured for a dataset of approximately 6,000 retinal fundus images, with approximately 3,000 images in each class, according to the notebook's description.
+- 6,000 retinal images: 3,000 glaucoma and 3,000 normal (balanced).
+- Stratified split with seed 42: **4,800 train / 600 validation / 600 test**, with 300 glaucoma and 300 normal images in the validation and test sets.
 
-Expected directory structure:
 
-```text
-Glaucoma_Dataset2/
-├── glaucoma/
-│   ├── image_001.jpg
-│   └── ...
-└── normal/
-    ├── image_001.jpg
-    └── ...
-```
+## Methods
 
-The dataset is not included in this repository. Obtain it from an authorized source and follow the relevant access, licensing, and redistribution conditions.
+**Deep learning (EfficientNetB3, DenseNet121)**
+- ImageNet-pretrained backbone, global average pooling, dropout 0.3, 2-class softmax output.
+- Input 224 x 224, batch size 32, mixed precision.
+- Augmentation (training only): horizontal flip, small rotation, zoom, contrast.
+- Stage 1: train the new head with the backbone frozen (up to 10 epochs, learning rate 1e-3).
+- Stage 2: unfreeze and fine-tune (up to 30 epochs, learning rate 1e-4).
+- Early stopping and checkpointing on validation AUC, with learning-rate reduction on plateau. The best epoch was 22 for EfficientNetB3 and 7 for DenseNet121.
 
-**Important:** Verify the actual image counts and class distribution when running the notebook; the stated counts should not be treated as independently verified dataset statistics.
+**Classical machine learning (SVM, XGBoost)**
+- Images resized to 128 x 128. Features (322 per image): HOG on grayscale, uniform LBP histogram, and per-channel 32-bin color histograms.
+- SVM (RBF kernel): randomized search, 5-fold cross-validation, best C = 10, gamma = scale. Final model retrained on train + validation.
+- XGBoost: randomized search, 3-fold cross-validation, best max depth 6, learning rate 0.1, subsample 0.8, column sample 0.8.
 
-## Experimental Setup
+**Grad-CAM audit**
+- Grad-CAM heatmaps for all 600 test images per deep model. An image is flagged when the strongest activation falls mostly on the dark background or border instead of the retina, which can indicate shortcut learning.
 
-The notebook uses a stratified split:
+## Results (held-out test set, 600 images)
 
-| Partition | Proportion |
-|---|---:|
-| Training | 80% |
-| Validation | 10% |
-| Testing | 10% |
+| Model | Accuracy | AUC | Glaucoma precision | Glaucoma recall | Inference time per image |
+|---|---|---|---|---|---|
+| DenseNet121 | 0.9000 | 0.9650 | 0.8871 | 0.9167 | 0.0435 s |
+| EfficientNetB3 | 0.8500 | 0.9334 | 0.8750 | 0.8167 | 0.1025 s |
+| XGBoost | 0.7450 | 0.8223 | n/a | n/a | 0.000015 s |
+| SVM (RBF) | 0.7350 | 0.8287 | n/a | n/a | 0.0011 s |
 
-A fixed random seed is used to support reproducibility.
+- DenseNet121 gave the best results, and both deep models clearly outperformed the classical models.
+- Inference times for SVM and XGBoost exclude feature extraction, so they are not directly comparable with the deep models, which include image loading and preprocessing.
+- The precision, recall, and F1 in the one-line test summaries printed in the notebook are for label 1, which is the **normal** class. The per-class glaucoma values above come from the notebook's classification reports.
 
-The deep learning models use resized 224 × 224 RGB images. Training augmentation includes horizontal flipping, rotation, zoom, and contrast adjustment.
+### Grad-CAM audit
 
-## Models and Methods
+| Model | Images flagged for background attention | Accuracy when flagged | Accuracy when not flagged |
+|---|---|---|---|
+| DenseNet121 | 1.5% | 77.8% | 90.2% |
+| EfficientNetB3 | 9.3% | 57.1% | 87.9% |
 
-### 1. EfficientNetB3
+EfficientNetB3 relies on the image background more often, and its accuracy is much lower on those images. DenseNet121 focuses on the retina more consistently.
 
-An ImageNet-pretrained EfficientNetB3 backbone is used with a global average pooling layer, dropout, and a two-class softmax output layer.
 
-The training pipeline includes a warm-up stage followed by fine-tuning. Model checkpoints and early-stopping callbacks monitor validation AUC.
+## Tools
 
-### 2. DenseNet121
-
-DenseNet121 uses a similar transfer-learning approach, with a global average pooling layer, dropout, and a two-class output layer. Its performance is evaluated on the held-out test partition.
-
-### 3. Support Vector Machine (SVM)
-
-The SVM uses an RBF kernel and handcrafted image features, including HOG and LBP descriptors. Hyperparameter search is used to identify a suitable configuration.
-
-### 4. XGBoost
-
-XGBoost is trained on the handcrafted image-feature representation. The notebook includes randomized hyperparameter search and classification evaluation.
-
-## Evaluation
-
-The notebook includes code for comparing the models with:
-
-- Accuracy
-- Precision
-- Recall
-- F1-score
-- ROC-AUC where applicable
-- Classification reports
-- Confusion matrices
-- Training and inference timing where recorded
-
-Final performance claims should be based on actual predictions on the held-out test set. This README does not assert a particular best-performing model or numeric test score without a verified result from the notebook's execution.
-
-## Explainability: Grad-CAM
-
-Gradient-weighted Class Activation Mapping (Grad-CAM) generates heatmaps that highlight image regions associated with the predictions of EfficientNetB3 and DenseNet121.
-
-The heatmaps can help researchers inspect model behavior, but they do not prove that the model uses medically valid features or that its predictions are clinically correct.
-
-## Background-Attention Audit
-
-The notebook includes an additional audit that estimates how much of the high-activation Grad-CAM region falls outside the foreground retinal field of view.
-
-The analysis:
-
-1. Generates Grad-CAM heatmaps for test images.
-2. Estimates a foreground mask using image brightness.
-3. Calculates a background-attention fraction.
-4. Flags cases that exceed a selected threshold.
-5. Summarizes results by model and true class.
-6. Visualizes examples with high background attention.
-
-This is a heuristic diagnostic for possible shortcut learning. A flagged case does not necessarily prove that a model relied on background artifacts, and an unflagged case does not guarantee robust behavior.
-
-## Technologies Used
-
-- Python
-- TensorFlow and Keras
-- Scikit-learn
-- XGBoost
-- NumPy and Pandas
-- scikit-image
-- Matplotlib and Seaborn
-- Joblib
-
-## Getting Started
-
-### Requirements
-
-Use Python 3.10 or another version compatible with your chosen TensorFlow release. A GPU is recommended for training the deep learning models, but a compatible CPU environment may also be used.
-
-### Install dependencies
-
-In Google Colab or a compatible notebook environment:
-
-```python
-%pip install tensorflow scikit-image xgboost joblib
-```
-
-The notebook also imports NumPy, Pandas, scikit-learn, Matplotlib, and Seaborn. Install these packages if they are not already available.
-
-For reproducibility, document and pin the dependency versions used in your final experiments.
-
-### Configure the dataset path
-
-Update the `DATASET_DIR` variable in the dataset-configuration cell:
-
-```python
-DATASET_DIR = "/path/to/Glaucoma_Dataset2"
-```
-
-Replace the placeholder with the actual dataset location. Ensure that the directory contains the expected `glaucoma` and `normal` folders.
-
-The original notebook uses a Kaggle-specific path, so the path must be changed when running the notebook in Google Colab or a local environment.
-
-### Run the notebook
-
-1. Open the notebook in Google Colab or Jupyter Notebook.
-2. Install the dependencies.
-3. Configure the dataset path.
-4. Run the cells in order.
-5. Inspect the training histories, test-set metrics, and confusion matrices.
-6. Review the Grad-CAM heatmaps and background-attention audit.
-7. Examine the generated reports and visualizations.
-
-The complete workflow may require substantial processing time, especially when training both deep learning models and running the attention audit over the full test set.
-
-## Generated Outputs
-
-The notebook writes artifacts to `glaucoma_outputs_final/`. Depending on which cells complete successfully, outputs may include:
-
-- Trained Keras models and checkpoints.
-- Training-history CSV files.
-- Training, validation, and test path manifests.
-- Model evaluation reports.
-- Confusion-matrix plots.
-- Grad-CAM visualizations.
-- Background-attention audit summaries.
-- CSV reports and other diagnostic figures.
-
-Generated artifacts are not necessarily included in this repository.
-
-## Limitations
-
-- Results depend on the dataset, preprocessing, split strategy, and software environment.
-- A random image-level split does not establish generalization to independent patients or external clinical populations.
-- Grad-CAM is a visualization technique, not proof of causal reasoning.
-- Background-attention estimates depend on the foreground-mask heuristic and chosen threshold.
-- External validation and clinical assessment are required before considering real-world medical use.
-- Reproducibility requires access to the dataset and compatible dependencies.
-
-## Future Work
-
-- Evaluate on an independent external dataset.
-- Use patient-level splitting when patient identifiers are available.
-- Report confidence intervals and statistical comparisons between models.
-- Investigate model robustness to image artifacts and acquisition differences.
-- Evaluate explanations with domain experts.
-- Develop a research demonstration interface for image predictions.
-
-## Author
-
-**Mayishat Altab**
-
-This repository documents my work on machine learning and deep learning for retinal fundus image classification, including comparative model evaluation and exploratory explainability analysis.
-
-**Research interests:** Machine Learning, Deep Learning, Medical Image Analysis, and Explainable AI.
-
-**GitHub:** [Your GitHub Profile](https://github.com/mayishataltab)
-
-Replace the placeholder above with your GitHub username.
-
-## License
-
-Choose a license for the original code before distributing it. Dataset usage and redistribution rights are governed separately by the dataset provider's terms.
-
-## Responsible Use
-
-This repository is intended for research and educational use. Predictions from these models should not be used to diagnose, exclude, or treat glaucoma in individual patients.
+Python 3.12, TensorFlow/Keras, scikit-learn, XGBoost, scikit-image, pandas, NumPy, Matplotlib, seaborn, joblib.
